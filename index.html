@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0b1120">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Finanças">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Controle de Finanças</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => console.log('Service Worker registrado'))
+      .catch(err => console.log('Erro no Service Worker:', err));
+  });
+}
+</script>
+<style>
+  :root {
+    --bg: #0b1120;
+    --card: #1a2332;
+    --card-hover: #1e293b;
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+    --green: #10b981;
+    --red: #f43f5e;
+    --blue: #3b82f6;
+    --purple: #a855f7;
+    --border: #2d3a4f;
+    --shadow: 0 8px 32px rgba(0,0,0,0.3);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: linear-gradient(180deg, #0b1120 0%, #111827 100%);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  .container { max-width: 960px; margin: 0 auto; padding: 20px 16px 40px; }
+  header { text-align: center; margin-bottom: 28px; }
+  h1 { font-size: 2rem; margin: 0; background: linear-gradient(90deg, #60a5fa, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .subtitle { color: var(--muted); margin-top: 6px; font-size: 0.95rem; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: var(--shadow);
+    transition: transform 0.2s;
+  }
+  .card:hover { transform: translateY(-2px); }
+  .card h3 { margin: 0 0 8px; font-size: 0.85rem; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
+  .card .value { font-size: 1.6rem; font-weight: 800; }
+  .positive { color: var(--green); }
+  .negative { color: var(--red); }
+
+  .form-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 24px;
+    box-shadow: var(--shadow);
+  }
+  .form-row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; font-weight: 500; }
+  input, select, button {
+    background: #0f172a;
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 1rem;
+    outline: none;
+    transition: border 0.2s;
+  }
+  input:focus, select:focus { border-color: var(--blue); }
+  input, select { flex: 1; min-width: 140px; }
+  button {
+    background: linear-gradient(90deg, #3b82f6, #6366f1);
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+    box-shadow: 0 4px 14px rgba(59,130,246,0.4);
+  }
+  button:hover { opacity: 0.95; transform: translateY(-1px); }
+  button.danger { background: linear-gradient(90deg, #f43f5e, #e11d48); box-shadow: 0 4px 14px rgba(244,63,94,0.3); }
+  button.secondary { background: #334155; box-shadow: none; }
+
+  .filters { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; align-items: end; }
+  .section-title { margin: 28px 0 14px; font-size: 1.25rem; display: flex; align-items: center; gap: 8px; }
+
+  .chart-container {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 24px;
+    box-shadow: var(--shadow);
+    max-width: 420px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .chart-container h3 { text-align: center; margin: 0 0 16px; font-size: 1.05rem; }
+
+  .day-list, .trans-list { display: flex; flex-direction: column; gap: 10px; }
+  .item {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    transition: background 0.2s;
+  }
+  .item:hover { background: var(--card-hover); }
+  .item .info { flex: 1; }
+  .item .desc { font-weight: 600; }
+  .item .meta { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+  .amount { font-weight: 800; font-size: 1.15rem; }
+  .entrada { color: var(--green); }
+  .gasto { color: var(--red); }
+  .actions { display: flex; gap: 8px; }
+  .actions button { padding: 7px 12px; font-size: 0.85rem; border-radius: 8px; }
+  .empty { color: var(--muted); text-align: center; padding: 30px 16px; font-style: italic; }
+
+  .export-import { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+
+  @media (max-width: 600px) {
+    .item { flex-direction: column; align-items: flex-start; }
+    .actions { width: 100%; justify-content: flex-end; margin-top: 8px; }
+    h1 { font-size: 1.6rem; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>💰 Controle de Finanças</h1>
+    <p class="subtitle">Acompanhe seus dias e o fechamento do mês</p>
+  </header>
+
+  <div class="cards" id="summaryCards">
+    <div class="card">
+      <h3>Entradas do mês</h3>
+      <div class="value positive" id="monthIn">R$ 0,00</div>
+    </div>
+    <div class="card">
+      <h3>Gastos do mês</h3>
+      <div class="value gasto" id="monthOut">R$ 0,00</div>
+    </div>
+    <div class="card">
+      <h3>Fechamento do mês</h3>
+      <div class="value" id="monthBalance">R$ 0,00</div>
+    </div>
+  </div>
+
+  <div class="chart-container">
+    <h3>📊 Entradas vs Gastos</h3>
+    <canvas id="pieChart"></canvas>
+  </div>
+
+  <div class="form-card">
+    <div class="form-row">
+      <div style="flex:1; min-width:140px;">
+        <label>Tipo</label>
+        <select id="type">
+          <option value="entrada">Entrada</option>
+          <option value="gasto">Gasto</option>
+        </select>
+      </div>
+      <div style="flex:1; min-width:120px;">
+        <label>Valor (R$)</label>
+        <input type="number" id="amount" step="0.01" min="0.01" placeholder="0,00">
+      </div>
+      <div style="flex:2; min-width:180px;">
+        <label>Descrição</label>
+        <input type="text" id="desc" placeholder="Ex: Salário, Mercado, Conta de luz">
+      </div>
+    </div>
+    <div class="form-row">
+      <div style="flex:1; min-width:140px;">
+        <label>Categoria</label>
+        <select id="category">
+          <option>Salário</option>
+          <option>Freelance</option>
+          <option>Alimentação</option>
+          <option>Transporte</option>
+          <option>Contas</option>
+          <option>Lazer</option>
+          <option>Saúde</option>
+          <option>Outros</option>
+        </select>
+      </div>
+      <div style="flex:1; min-width:140px;">
+        <label>Data</label>
+        <input type="date" id="date">
+      </div>
+      <div style="align-self:end;">
+        <button id="addBtn" style="width:100%; min-width:140px;">Adicionar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="filters">
+    <div>
+      <label>Mês</label>
+      <input type="month" id="monthFilter">
+    </div>
+    <div>
+      <label>Dia específico (opcional)</label>
+      <input type="date" id="dayFilter">
+    </div>
+    <button class="secondary" id="clearFilter">Limpar filtro de dia</button>
+  </div>
+
+  <h2 class="section-title">📅 Por dia</h2>
+  <div id="dayList" class="day-list"></div>
+
+  <h2 class="section-title">📋 Lançamentos</h2>
+  <div id="transList" class="trans-list"></div>
+
+  <div class="form-card" style="margin-top:32px;">
+    <h3 style="margin-top:0;">Transferir dados entre aparelhos</h3>
+    <p style="color:var(--muted); font-size:0.9rem; margin:0 0 10px;">Exporte no notebook e importe no celular (ou vice-versa). Seus dados não vão para a internet.</p>
+    <div class="export-import">
+      <button id="exportBtn">📤 Exportar dados</button>
+      <button class="secondary" id="importBtn">📥 Importar dados</button>
+      <input type="file" id="importFile" accept=".json" style="display:none;">
+    </div>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = 'financas_david_v1';
+let transactions = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+let pieChart = null;
+
+const today = new Date().toISOString().split('T')[0];
+document.getElementById('date').value = today;
+document.getElementById('monthFilter').value = today.slice(0,7);
+
+function formatMoney(v) {
+  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function save() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(transactions));
+  render();
+}
+
+function getFiltered() {
+  const month = document.getElementById('monthFilter').value;
+  const day = document.getElementById('dayFilter').value;
+  return transactions.filter(t => {
+    if (month && !t.date.startsWith(month)) return false;
+    if (day && t.date !== day) return false;
+    return true;
+  });
+}
+
+function updateChart() {
+  const month = document.getElementById('monthFilter').value || today.slice(0,7);
+  const monthTx = transactions.filter(t => t.date.startsWith(month));
+
+  const monthIn = monthTx.filter(t => t.type === 'entrada').reduce((s,t) => s + t.amount, 0);
+  const monthOut = monthTx.filter(t => t.type === 'gasto').reduce((s,t) => s + t.amount, 0);
+
+  if (pieChart) pieChart.destroy();
+
+  if (monthIn === 0 && monthOut === 0) {
+    document.getElementById('pieChart').style.display = 'none';
+    return;
+  }
+  document.getElementById('pieChart').style.display = 'block';
+
+  const ctx = document.getElementById('pieChart').getContext('2d');
+  pieChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Entradas', 'Gastos'],
+      datasets: [{
+        data: [monthIn, monthOut],
+        backgroundColor: ['#10b981', '#f43f5e'],
+        borderWidth: 0,
+        hoverOffset: 10
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: {
+            color: '#e2e8f0',
+            padding: 16,
+            font: { size: 13, weight: '600' },
+            generateLabels: (chart) => {
+              const data = chart.data.datasets[0].data;
+              const total = data.reduce((a, b) => a + b, 0);
+              const colors = ['#10b981', '#f43f5e'];
+              return chart.data.labels.map((label, i) => {
+                const value = data[i];
+                const percent = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                return {
+                  text: `${label}: ${formatMoney(value)} (${percent}%)`,
+                  fillStyle: colors[i],
+                  strokeStyle: colors[i],
+                  fontColor: colors[i],
+                  lineWidth: 0,
+                  hidden: false,
+                  index: i
+                };
+              });
+            }
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+              const percent = total > 0 ? ((ctx.raw / total) * 100).toFixed(1) : 0;
+              return `${ctx.label}: ${formatMoney(ctx.raw)} (${percent}%)`;
+            }
+          }
+        }
+      },
+      cutout: '62%'
+    }
+  });
+}
+
+function render() {
+  const month = document.getElementById('monthFilter').value || today.slice(0,7);
+  const monthTx = transactions.filter(t => t.date.startsWith(month));
+
+  const monthIn = monthTx.filter(t => t.type === 'entrada').reduce((s,t) => s + t.amount, 0);
+  const monthOut = monthTx.filter(t => t.type === 'gasto').reduce((s,t) => s + t.amount, 0);
+  const balance = monthIn - monthOut;
+
+  document.getElementById('monthIn').textContent = formatMoney(monthIn);
+  document.getElementById('monthOut').textContent = formatMoney(monthOut);
+  const balEl = document.getElementById('monthBalance');
+  balEl.textContent = formatMoney(balance);
+  balEl.className = 'value ' + (balance >= 0 ? 'positive' : 'negative');
+  balEl.textContent += balance >= 0 ? ' (Positivo)' : ' (Negativo)';
+
+  updateChart();
+
+  const byDay = {};
+  getFiltered().forEach(t => {
+    if (!byDay[t.date]) byDay[t.date] = { entrada: 0, gasto: 0 };
+    byDay[t.date][t.type] += t.amount;
+  });
+
+  const dayList = document.getElementById('dayList');
+  const days = Object.keys(byDay).sort().reverse();
+  dayList.innerHTML = days.length === 0
+    ? '<div class="empty">Nenhum lançamento neste período</div>'
+    : days.map(d => {
+        const day = byDay[d];
+        const dayBal = day.entrada - day.gasto;
+        const dateObj = new Date(d + 'T12:00:00');
+        const label = dateObj.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' });
+        return `
+          <div class="item">
+            <div class="info">
+              <div class="desc">${label}</div>
+              <div class="meta">Entradas: ${formatMoney(day.entrada)} · Gastos: ${formatMoney(day.gasto)}</div>
+            </div>
+            <div class="amount ${dayBal >= 0 ? 'entrada' : 'gasto'}">${formatMoney(dayBal)}</div>
+          </div>`;
+      }).join('');
+
+  const list = document.getElementById('transList');
+  const filtered = getFiltered().sort((a,b) => b.date.localeCompare(a.date) || b.id - a.id);
+  list.innerHTML = filtered.length === 0
+    ? '<div class="empty">Nenhum lançamento</div>'
+    : filtered.map(t => `
+        <div class="item">
+          <div class="info">
+            <div class="desc">${t.desc}</div>
+            <div class="meta">${t.category} · ${new Date(t.date+'T12:00:00').toLocaleDateString('pt-BR')}</div>
+          </div>
+          <div class="amount ${t.type}">${t.type === 'entrada' ? '+' : '-'}${formatMoney(t.amount)}</div>
+          <div class="actions">
+            <button class="secondary" onclick="editTx(${t.id})">Editar</button>
+            <button class="danger" onclick="deleteTx(${t.id})">Apagar</button>
+          </div>
+        </div>`).join('');
+}
+
+function addOrUpdate(id = null) {
+  const type = document.getElementById('type').value;
+  const amount = parseFloat(document.getElementById('amount').value);
+  const desc = document.getElementById('desc').value.trim();
+  const category = document.getElementById('category').value;
+  const date = document.getElementById('date').value;
+
+  if (!amount || amount <= 0 || !desc || !date) {
+    alert('Preencha valor, descrição e data.');
+    return;
+  }
+
+  if (id) {
+    const idx = transactions.findIndex(t => t.id === id);
+    if (idx >= 0) transactions[idx] = { id, type, amount, desc, category, date };
+  } else {
+    transactions.push({ id: Date.now(), type, amount, desc, category, date });
+  }
+  document.getElementById('amount').value = '';
+  document.getElementById('desc').value = '';
+  save();
+}
+
+document.getElementById('addBtn').onclick = () => addOrUpdate();
+
+window.deleteTx = function(id) {
+  if (confirm('Apagar este lançamento?')) {
+    transactions = transactions.filter(t => t.id !== id);
+    save();
+  }
+};
+
+window.editTx = function(id) {
+  const t = transactions.find(x => x.id === id);
+  if (!t) return;
+  document.getElementById('type').value = t.type;
+  document.getElementById('amount').value = t.amount;
+  document.getElementById('desc').value = t.desc;
+  document.getElementById('category').value = t.category;
+  document.getElementById('date').value = t.date;
+  transactions = transactions.filter(x => x.id !== id);
+  document.getElementById('addBtn').onclick = () => {
+    addOrUpdate(id);
+    document.getElementById('addBtn').onclick = () => addOrUpdate();
+    document.getElementById('addBtn').textContent = 'Adicionar';
+  };
+  document.getElementById('addBtn').textContent = 'Salvar edição';
+  document.getElementById('desc').focus();
+};
+
+document.getElementById('monthFilter').onchange = render;
+document.getElementById('dayFilter').onchange = render;
+document.getElementById('clearFilter').onclick = () => {
+  document.getElementById('dayFilter').value = '';
+  render();
+};
+
+document.getElementById('exportBtn').onclick = () => {
+  const blob = new Blob([JSON.stringify(transactions, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `financas_${today}.json`;
+  a.click();
+};
+
+document.getElementById('importBtn').onclick = () => document.getElementById('importFile').click();
+document.getElementById('importFile').onchange = (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      if (Array.isArray(data)) {
+        if (confirm('Isso vai substituir os dados atuais. Continuar?')) {
+          transactions = data;
+          save();
+          alert('Dados importados com sucesso!');
+        }
+      } else alert('Arquivo inválido.');
+    } catch { alert('Erro ao ler o arquivo.'); }
+  };
+  reader.readAsText(file);
+};
+
+render();
+</script>
+</body>
+</html>
